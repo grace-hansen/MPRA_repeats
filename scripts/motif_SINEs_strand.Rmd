@@ -1,0 +1,500 @@
+---
+title: "Location of MPRA variants in repeats"
+author: "Grace Hansen"
+date: "06/29/2019"
+output: pdf_document
+---
+  
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = '~/midway/MPRA_repeats/')
+library(data.table)
+library(tidyverse)
+library(eulerr)
+library(gridExtra)
+pony_colors<-fread("~/medusa/papers/TWAS/pony_palette")
+########## For color manipulation of graph ###############
+darken <- function(color, factor=1.2){
+  col <- col2rgb(color)
+  col <- col/factor
+  col <- rgb(t(col), maxColorValue=255)
+  col
+}
+lighten <- function(color, factor=0.8){
+  col <- col2rgb(color)
+  col <- col/factor
+  for (i in 1:length(col)) { if ( col[i] > 255 ) { col[i] = 255 } }
+  col <- rgb(t(col), maxColorValue=255)
+  col
+}
+#########################################################
+```
+
+```{r combine_motifs_and_Alus,echo=FALSE}
+### Get locs
+motif_locs<-as.data.frame(fread("cat ~/projects/MPRA/WHR/results/motif/enhancers_shared_motifs.bed ~/projects/MPRA/WHR/results/motif/EMVars_shared_motifs.bed ~/projects/MPRA/WHR/results/motif/nonsig_shared_motifs.bed",header=FALSE),stringsAsFactors=FALSE)
+colnames(motif_locs)<-c("chr","motif_start","motif_stop","rsid")
+motif_locs<-motif_locs %>% distinct(rsid,.keep_all=TRUE)
+motif_locs$motif_center<-motif_locs$motif_start+(motif_locs$motif_stop-motif_locs$motif_start)/2
+
+### Get repeats
+repeats<-as.data.frame(fread("~/midway/MPRA_repeats/MPRA_variants_repeats.txt"),stringsAsFactors=FALSE)
+dat<-merge(repeats,motif_locs,on=c("chr","rsid"),all.x=TRUE) %>% distinct(rsid,.keep_all=TRUE)
+
+``` 
+
+``` {r motif_to_variant,echo=FALSE}
+dat$motif_to_var<-dat$pos-dat$motif_start
+M<-ggplot(dat[dat$type=="EMVar",])+
+  geom_histogram(aes(x=motif_to_var),fill="steelblue4")+
+  ggtitle("Distance from motif to variant, EMVars")+
+  scale_x_continuous(limits=c(-100,400))+
+  theme_minimal()
+E<-ggplot(dat[dat$type=="enhancer",])+
+  geom_histogram(aes(x=motif_to_var),fill="steelblue4")+
+  ggtitle("Distance from motif to variant, enhancers")+
+  scale_x_continuous(limits=c(-100,400))+
+  theme_minimal()
+N<-ggplot(dat[dat$type=="nonsig",])+
+  geom_histogram(aes(x=motif_to_var),fill="steelblue4")+
+  ggtitle("Distance from motif to variant, nonsignificant variants")+
+  scale_x_continuous(limits=c(-100,400))+
+  theme_minimal()
+
+grid.arrange(M,E,N,nrow=3)
+
+#pdf("~/projects/MPRA/WHR/results/motif/motif_to_var.pdf",width=8,height=8)
+#grid.arrange(M,E,N,nrow=3)
+#dev.off()
+```
+
+### Overlap between TF motifs and Alus in EMVars
+Are EMVar sequences containing Alus more likely to contain a shared TF motif?
+```{r chi_square,echo=FALSE}
+dat[is.na(dat)]<-0
+
+## How much overlap is there between sequences with shared motifs and sequences with Alus?
+dat_motif_Alu<-nrow(dat[grepl("Alu",dat$rep_subtype) & dat$motif_start!=0,]) #How many sequences have both a shared motif and a Alu?
+dat_motif_noAlu<-nrow(dat[!(grepl("Alu",dat$rep_subtype)) & dat$motif_start!=0,])
+dat_nomotif_Alu<-nrow(dat[grepl("Alu",dat$rep_subtype) & dat$motif_start==0,])
+dat_nomotif_noAlu<-nrow(dat[!(grepl("Alu",dat$rep_subtype)) & dat$motif_start==0,])
+
+expected=matrix(nrow=2,ncol=2)
+colnames(expected)<-c("Motif","No motif")
+rownames(expected)<-c("Alu","no Alu")
+observed<-expected
+prop_Alu=nrow(dat[grepl("Alu",dat$rep_subtype),])/nrow(dat)
+expected[1,1]<-nrow(dat[dat$motif_start!=0,]) * prop_Alu
+expected[2,1]<-nrow(dat[dat$motif_start!=0,]) * (1-prop_Alu)
+expected[1,2]<-nrow(dat[dat$motif_start==0,]) * prop_Alu
+expected[2,2]<-nrow(dat[dat$motif_start==0,]) * (1-prop_Alu)
+observed[1,1]<-dat_motif_Alu
+observed[2,1]<-dat_motif_noAlu
+observed[1,2]<-dat_nomotif_Alu
+observed[2,2]<-dat_nomotif_noAlu
+
+knitr::kable(observed,caption="Observed prevalence of motifs and Alus, all sequences")
+knitr::kable(expected,caption="Expected prevalence of motifs and Alus, all sequences")
+
+chisq.test(observed,expected)$p.value
+```
+
+```{r EMVar_chi_square,echo=FALSE}
+dat[is.na(dat)]<-0
+
+## How much overlap is there between the EMVars with shared motifs and the EMVars with Alus?
+EMVars=dat[dat$type=="EMVar",]
+EMVars_motif_Alu<-nrow(EMVars[grepl("Alu",EMVars$rep_subtype) & EMVars$motif_start!=0,]) #How many of the EMVars have both a shared motif and a Alu?
+EMVars_motif_noAlu<-nrow(EMVars[!(grepl("Alu",EMVars$rep_subtype)) & EMVars$motif_start!=0,])
+EMVars_nomotif_Alu<-nrow(EMVars[grepl("Alu",EMVars$rep_subtype) & EMVars$motif_start==0,])
+EMVars_nomotif_noAlu<-nrow(EMVars[!(grepl("Alu",EMVars$rep_subtype)) & EMVars$motif_start==0,])
+
+expected=matrix(nrow=2,ncol=2)
+colnames(expected)<-c("Motif","No motif")
+rownames(expected)<-c("Alu","no Alu")
+observed<-expected
+prop_Alu=nrow(EMVars[grepl("Alu",EMVars$rep_subtype),])/nrow(EMVars)
+expected[1,1]<-nrow(EMVars[EMVars$motif_start!=0,]) * prop_Alu
+expected[2,1]<-nrow(EMVars[EMVars$motif_start!=0,]) * (1-prop_Alu)
+expected[1,2]<-nrow(EMVars[EMVars$motif_start==0,]) * prop_Alu
+expected[2,2]<-nrow(EMVars[EMVars$motif_start==0,]) * (1-prop_Alu)
+observed[1,1]<-EMVars_motif_Alu
+observed[2,1]<-EMVars_motif_noAlu
+observed[1,2]<-EMVars_nomotif_Alu
+observed[2,2]<-EMVars_nomotif_noAlu
+
+knitr::kable(observed,caption="Observed prevalence of motifs and Alus in EMVars")
+knitr::kable(expected,caption="Expected prevalence of motifs and Alus in EMVars")
+
+plot_dat<-as.numeric(c(EMVars_motif_Alu,EMVars_motif_noAlu,EMVars_nomotif_Alu,EMVars_nomotif_noAlu))
+plot_dat<-plot_dat/nrow(dat[dat$type=="EMVar",])
+names(plot_dat)<-c("Motif, Alu", "Motif, no Alu","No motifs, Alu","No motif, no Alu")
+M<-ggplot()+
+  geom_col(aes(x=names(plot_dat),y=plot_dat,fill=names(plot_dat)))+
+  #annotate("text",x=1,y=30,label=paste("p=",formatC(chisq.test(observed,expected)$p.value,digits=4),sep=''),cex=5)+
+  #ggtitle("EMVars")+
+  theme_minimal()+
+  theme(panel.grid.major.x=element_blank(),
+        legend.position="none",
+        axis.title=element_text(size=17),
+        axis.text=element_text(size=17),
+        axis.text.x=element_text(angle=-45))+
+  scale_y_continuous(name="Proportion of EMVar sequences")+
+  scale_fill_manual(values=c(rgb(pony_colors[5,1:3]),"#C9CCE8","gray80",rgb(pony_colors[10,1:3])))+
+  scale_x_discrete(name="")
+M
+#pdf("~/midway/MPRA_repeats/EMVar_Alus_in_motifs.pdf",width=2.75,height=6)
+#M
+#dev.off()
+
+```
+
+`r print(paste("EMVar p=",chisq.test(observed,expected)$p.value,sep=''))`
+
+
+### Overlap between TF motifs and Alus in enhancers
+Are enhancer sequences containing Alus more likely to contain a shared TF motif?
+```{r enhancer_chi_square,echo=FALSE}
+## How much overlap is there between the enhancers with shared motifs and the enhancers with Alus?
+enhancers=dat[dat$type=="enhancer",]
+enhancers_motif_Alu<-nrow(enhancers[grepl("Alu",enhancers$rep_subtype) & enhancers$motif_start!=0,]) #How many of the enhancers have both a shared motif and a Alu?
+enhancers_motif_noAlu<-nrow(enhancers[!(grepl("Alu",enhancers$rep_subtype)) & enhancers$motif_start!=0,])
+enhancers_nomotif_Alu<-nrow(enhancers[grepl("Alu",enhancers$rep_subtype) & enhancers$motif_start==0,])
+enhancers_nomotif_noAlu<-nrow(enhancers[!(grepl("Alu",enhancers$rep_subtype)) & enhancers$motif_start==0,])
+
+expected=matrix(nrow=2,ncol=2)
+colnames(expected)<-c("Motif","No motif")
+rownames(expected)<-c("Alu","no Alu")
+observed<-expected
+prop_Alu=nrow(enhancers[grepl("Alu",enhancers$rep_subtype),])/nrow(enhancers)
+expected[1,1]<-nrow(enhancers[enhancers$motif_start!=0,]) * prop_Alu
+expected[2,1]<-nrow(enhancers[enhancers$motif_start!=0,]) * (1-prop_Alu)
+expected[1,2]<-nrow(enhancers[enhancers$motif_start==0,]) * prop_Alu
+expected[2,2]<-nrow(enhancers[enhancers$motif_start==0,]) * (1-prop_Alu)
+observed[1,1]<-enhancers_motif_Alu
+observed[2,1]<-enhancers_motif_noAlu
+observed[1,2]<-enhancers_nomotif_Alu
+observed[2,2]<-enhancers_nomotif_noAlu
+
+knitr::kable(observed,caption="Observed prevalence of motifs and Alus in enhancers")
+knitr::kable(expected,caption="Expected prevalence of motifs and Alus in enhancers")
+
+plot_dat<-as.numeric(c(enhancers_motif_Alu,enhancers_motif_noAlu,enhancers_nomotif_Alu,enhancers_nomotif_noAlu))
+plot_dat<-plot_dat/nrow(dat[dat$type=="enhancer",])
+names(plot_dat)<-c("Motif, Alu", "Motif, no Alu","No motifs, Alu","No motif, no Alu")
+E<-ggplot()+
+  geom_col(aes(x=names(plot_dat),y=plot_dat,fill=names(plot_dat)))+
+  #annotate("text",x=1,y=100,label=paste("p=",formatC(chisq.test(observed,expected)$p.value,digits=4),sep=''),cex=5)+
+  #ggtitle("Enhancers")+
+  theme_minimal()+
+  theme(panel.grid.major.x=element_blank(),
+        legend.position="none",
+        axis.title=element_text(size=17),
+        axis.text=element_text(size=17),
+        axis.text.x=element_text(angle=-45))+
+  scale_y_continuous(name="Proportion of enhancer sequences")+
+  scale_fill_manual(values=c(rgb(pony_colors[5,1:3]),"#C9CCE8","gray80",rgb(pony_colors[10,1:3])))+
+  scale_x_discrete(name="")
+E
+#pdf("~/midway/MPRA_repeats/enhancer_Alus_in_motifs.pdf",width=2.75,height=6)
+#E
+#dev.off()
+```
+
+`r print(paste("enhancer p=",chisq.test(observed,expected)$p.value,sep=''))`
+
+### Overlap between TF motifs and Alus in nonsignificant sequences
+Are enhancer sequences containing Alus more likely to contain a shared TF motif?
+```{r nonsig_chi_square,echo=FALSE}
+## How much overlap is there between the nonsig with shared motifs and the nonsig with Alus?
+nonsig=dat[dat$type=="nonsig",]
+nonsig_motif_Alu<-nrow(nonsig[grepl("Alu",nonsig$rep_subtype) & nonsig$motif_start!=0,]) #How many of the nonsig have both a shared motif and a Alu?
+nonsig_motif_noAlu<-nrow(nonsig[!(grepl("Alu",nonsig$rep_subtype)) & nonsig$motif_start!=0,])
+nonsig_nomotif_Alu<-nrow(nonsig[grepl("Alu",nonsig$rep_subtype) & nonsig$motif_start==0,])
+nonsig_nomotif_noAlu<-nrow(nonsig[!(grepl("Alu",nonsig$rep_subtype)) & nonsig$motif_start==0,])
+
+expected=matrix(nrow=2,ncol=2)
+colnames(expected)<-c("Motif","No motif")
+rownames(expected)<-c("Alu","no Alu")
+observed<-expected
+prop_Alu=nrow(nonsig[grepl("Alu",nonsig$rep_subtype),])/nrow(nonsig)
+expected[1,1]<-nrow(nonsig[nonsig$motif_start!=0,]) * prop_Alu
+expected[2,1]<-nrow(nonsig[nonsig$motif_start!=0,]) * (1-prop_Alu)
+expected[1,2]<-nrow(nonsig[nonsig$motif_start==0,]) * prop_Alu
+expected[2,2]<-nrow(nonsig[nonsig$motif_start==0,]) * (1-prop_Alu)
+observed[1,1]<-nonsig_motif_Alu
+observed[2,1]<-nonsig_motif_noAlu
+observed[1,2]<-nonsig_nomotif_Alu
+observed[2,2]<-nonsig_nomotif_noAlu
+
+knitr::kable(observed,caption="Observed prevalence of motifs and Alus in nonsig sequences")
+knitr::kable(expected,caption="Expected prevalence of motifs and Alus in nonsig sequences")
+
+plot_dat<-as.numeric(c(nonsig_motif_Alu,nonsig_motif_noAlu,nonsig_nomotif_Alu,nonsig_nomotif_noAlu))
+plot_dat<-plot_dat/nrow(dat[dat$type=="nonsig",])
+names(plot_dat)<-c("Motif, Alu", "Motif, no Alu","No motifs, Alu","No motif, no Alu")
+N<-ggplot()+
+  geom_col(aes(x=names(plot_dat),y=plot_dat,fill=names(plot_dat)))+
+  #annotate("text",x=1,y=400,label=paste("p=",formatC(chisq.test(observed,expected)$p.value,digits=4),sep=''),cex=5)+
+  #ggtitle("Nonsignificant")+
+  theme_minimal()+
+  theme(panel.grid.major.x=element_blank(),
+        legend.position="none",
+        axis.title=element_text(size=17),
+        axis.text=element_text(size=17),
+        axis.text.x=element_text(angle=-45))+
+  scale_y_continuous(name="Proportion of nonsignificant sequences")+
+  scale_fill_manual(values=c(rgb(pony_colors[5,1:3]),"#C9CCE8","gray80",rgb(pony_colors[10,1:3])))+
+  scale_x_discrete(name="")
+N
+#pdf("~/midway/MPRA_repeats/nonsig_Alus_in_motifs.pdf",width=2.75,height=6)
+#N
+#dev.off()
+```
+
+`r print(paste("nonsig p=",chisq.test(observed,expected)$p.value,sep=''))`
+
+
+### Distance from Alu start to motif start
+Are the motifs always a certain distance from the start of a Alu? If so, this might indicated a shared part of the Alu at work.
+
+```{r distance_Alu_to_motif,echo=FALSE}
+EMVars_motif_Alu<-EMVars[grepl("Alu",EMVars$rep_subtype) & EMVars$motif_start!=0,]
+EMVars_motif_Alu$motif_Alu_dist[EMVars_motif_Alu$rep_strand=="+"]<-EMVars_motif_Alu$motif_center[EMVars_motif_Alu$rep_strand=="+"]-EMVars_motif_Alu$rep_start[EMVars_motif_Alu$rep_strand=="+"]
+EMVars_motif_Alu$motif_Alu_dist[EMVars_motif_Alu$rep_strand=="-"]<-EMVars_motif_Alu$rep_stop[EMVars_motif_Alu$rep_strand=="-"]-EMVars_motif_Alu$motif_stop[EMVars_motif_Alu$rep_strand=="-"]
+ggplot(EMVars_motif_Alu)+
+  geom_histogram(aes(x=motif_Alu_dist),binwidth=1)+
+  scale_x_continuous(name="motif center - Alu start")+
+  theme_minimal()+
+  ggtitle("EMVars")
+
+enhancers_motif_Alu<-enhancers[grepl("Alu",enhancers$rep_subtype) & enhancers$motif_start!=0,]
+enhancers_motif_Alu$motif_Alu_dist[enhancers_motif_Alu$rep_strand=="+"]<-enhancers_motif_Alu$motif_center[enhancers_motif_Alu$rep_strand=="+"]-enhancers_motif_Alu$rep_start[enhancers_motif_Alu$rep_strand=="+"]
+enhancers_motif_Alu$motif_Alu_dist[enhancers_motif_Alu$rep_strand=="-"]<-enhancers_motif_Alu$rep_stop[enhancers_motif_Alu$rep_strand=="-"]-enhancers_motif_Alu$motif_stop[enhancers_motif_Alu$rep_strand=="-"]
+ggplot(enhancers_motif_Alu)+
+  geom_histogram(aes(x=motif_Alu_dist),binwidth=1)+
+  scale_x_continuous(name="motif center - Alu start")+
+  theme_minimal()+
+  ggtitle("Enhancers")
+
+nonsig_motif_Alu<-nonsig[grepl("Alu",nonsig$rep_subtype) & nonsig$motif_start!=0,]
+nonsig_motif_Alu$motif_Alu_dist[nonsig_motif_Alu$rep_strand=="+"]<-nonsig_motif_Alu$motif_center[nonsig_motif_Alu$rep_strand=="+"]-nonsig_motif_Alu$rep_start[nonsig_motif_Alu$rep_strand=="+"]
+nonsig_motif_Alu$motif_Alu_dist[nonsig_motif_Alu$rep_strand=="-"]<-nonsig_motif_Alu$rep_stop[nonsig_motif_Alu$rep_strand=="-"]-nonsig_motif_Alu$motif_stop[nonsig_motif_Alu$rep_strand=="-"]
+ggplot(nonsig_motif_Alu)+
+  geom_histogram(aes(x=motif_Alu_dist),binwidth=1)+
+  scale_x_continuous(name="motif center - Alu start")+
+  theme_minimal()+
+  ggtitle("Nonsignificant sequences")
+
+```
+
+It looks like significant sequences are likely to contain a motif ~57 bp from the start of a Alu. Let's also visualize this as density plots.
+
+``` {r density_Alu_to_motif,echo=FALSE}
+sig_motif_Alu<-dat[grepl("Alu",dat$rep_subtype) & dat$motif_start!=0 & dat$type!="nonsig",]
+sig_motif_Alu$motif_Alu_dist[sig_motif_Alu$rep_strand=="+"]<-sig_motif_Alu$motif_center[sig_motif_Alu$rep_strand=="+"]-sig_motif_Alu$rep_start[sig_motif_Alu$rep_strand=="+"]
+sig_motif_Alu$motif_Alu_dist[sig_motif_Alu$rep_strand=="-"]<-sig_motif_Alu$rep_stop[sig_motif_Alu$rep_strand=="-"]-sig_motif_Alu$motif_stop[sig_motif_Alu$rep_strand=="-"]
+
+plot_dat<-rbind(sig_motif_Alu,nonsig_motif_Alu)
+plot_dat$type[plot_dat$type=="EMVar"]<-"Significant\n sequence"
+plot_dat$type[plot_dat$type=="enhancer"]<-"Significant\n sequence"
+plot_dat$type[plot_dat$type=="nonsig"]<-"Nonsignificant\n sequence"
+
+D<-ggplot(plot_dat)+
+  geom_density(aes(x=motif_Alu_dist,fill=type,color=type),alpha=0.5)+
+  scale_x_continuous(name="Distance from Alu start to motif center")+
+  scale_y_continuous(name="Density")+
+  scale_fill_manual(values=c(rgb(pony_colors[9,1:3]),rgb(pony_colors[5,1:3])))+
+  scale_color_manual(values=c(rgb(pony_colors[9,1:3]),rgb(pony_colors[5,1:3])))+
+  theme_minimal()+
+  theme(axis.text=element_text(size=16),
+        axis.title=element_text(size=16),
+        legend.title=element_blank(),
+        legend.text=element_text(size=14))+
+  ggtitle("")
+D
+pdf("~/midway/MPRA_repeats/Alus_to_motif_distance.pdf",width=10,height=4)
+D
+dev.off()
+
+```
+
+## Accessibility of active Alu elements
+
+Are the Alu elements that contain an adipogenic motif and drive expression in open chromatin?
+
+```{r Alus_in_open_chromatin,echo=FALSE}
+active_Alus<-sig_motif_Alu[sig_motif_Alu$motif_Alu_dist>50 & sig_motif_Alu$motif_Alu_dist<100,]
+write.table(active_Alus[,c("chr","rep_start","rep_stop","rsid")],"active_Alus.bed",quote=FALSE,row.names=FALSE,col.names=FALSE,sep='\t')
+system("liftOver active_Alus.bed ~/medusa/reference/hg38ToHg19.over.chain.gz active_Alus_hg19.bed unMapped")
+SGBS_day0<-system("bedtools intersect -a active_Alus_hg19.bed -b ~/projects/ATAC-seq/SGBS_2seqs/sgbs_preadipocyte/merge/peaks/macs2/sgbs_preadipocyte_peaks.narrowPeak -wa",intern=TRUE)
+SGBS_day2<-system("bedtools intersect -a active_Alus_hg19.bed -b ~/projects/ATAC-seq/SGBS_2seqs/sgbs_day2/merge/peaks/macs2/sgbs_day2_peaks.narrowPeak -wa",intern=TRUE)
+SGBS_day8<-system("bedtools intersect -a active_Alus_hg19.bed -b ~/projects/ATAC-seq/SGBS_2seqs/sgbs_day8/merge/peaks/macs2/sgbs_day8_peaks.narrowPeak -wa",intern=TRUE)
+SGBS_day16<-system("bedtools intersect -a active_Alus_hg19.bed -b ~/projects/ATAC-seq/SGBS_2seqs/sgbs_day16/merge/peaks/macs2/sgbs_day16_peaks.narrowPeak -wa",intern=TRUE)
+
+system("rm active_Alus_hg19.bed active_Alus.bed")
+
+print("Active repeats overlapping SGBS preadipocyte peaks:")
+SGBS_day0
+print("Active repeats overlapping SGBS day2 peaks:")
+SGBS_day2
+print("Active repeats overlapping SGBS day8 peaks:")
+SGBS_day8
+print("Active repeats overlapping SGBS day16 peaks:")
+SGBS_day16
+
+```
+
+````{r GAGAGTCA_expression,echo=FALSE}
+#Get Alu locations
+Alu_bed<-fread("~/midway/MPRA_repeats/MPRA_Alu_locs.bed",header=FALSE)
+colnames(Alu_bed)<-c("chr","rep_start","rep_stop","type")
+Alu_fa<-fread("~/midway/MPRA_repeats/fa/MPRA_Alus.fa",header=FALSE)
+Alu_fa<-Alu_fa[!(grepl(">",Alu_fa$V1)),]
+Alu_bed$seq<-Alu_fa$V1
+Alu_bed$type<-NULL
+
+#Merge with repeats
+Alus<-merge(repeats,Alu_bed,by=c("chr","rep_start","rep_stop"))
+
+#Flip seq of reverse Alus to reverse complement
+Alus$seq[Alus$rep_strand=="-"]<-chartr("ATGCN","TACGN",sapply(lapply(strsplit(Alus$seq[Alus$rep_strand=="-"], NULL), rev),paste, collapse=""))
+Alus$motif<-grepl("GAGGTCA",substr(Alus$seq,65,80))
+Alus$motif[Alus$motif==TRUE]<-"motif"
+Alus$motif[Alus$motif==FALSE]<-"no motif"
+
+barcodes<-as.data.frame(fread("~/projects/MPRA/WHR/results/barcode_activity.txt"))
+barcodes<-merge(barcodes,Alus[,c("rsid","rep_start","rep_stop","pos","rep_type","rep_score","rep_strand","rep_subtype","type","seq","motif")],by="rsid")
+barcodes$motif[barcodes$motif=="motif"]<-"Alus with GAGGTCA"
+barcodes$motif[barcodes$motif=="no motif"]<-"Alus without GAGGTCA"
+barcodes$qnorm_avg<-rowMeans(barcodes[,grepl("qnorm_",colnames(barcodes))])
+rsid_dat<-barcodes %>% group_by(rsid,motif,type) %>% summarize(qnorm_avg=mean(qnorm_avg))
+
+# Chi-square for proportion of GAGGTCA motifs per data type
+observed<-table(rsid_dat$motif,rsid_dat$type)
+
+alu_prop<-sum(observed[1,])/sum(observed)
+expected<-matrix(nrow=2,ncol=3)
+expected[1,1]<-alu_prop*sum(observed[,1])
+expected[1,2]<-alu_prop*sum(observed[,2])
+expected[1,3]<-alu_prop*sum(observed[,3])
+expected[2,1]<-(1-alu_prop)*sum(observed[,1])
+expected[2,2]<-(1-alu_prop)*sum(observed[,2])
+expected[2,3]<-(1-alu_prop)*sum(observed[,3])
+
+GAGprop_test<-chisq.test(observed,expected)
+
+#Print out proportions of GAGGTCA motifs per data type
+knitr::kable(table(rsid_dat$type,rsid_dat$motif))
+
+#Plot proportion of GAGGTCA motifs per data type
+rsid_dat[is.na(rsid_dat)]<-"0"
+prop_GAGGTCA<-numeric()
+prop_GAGGTCA[1]<-nrow(rsid_dat[rsid_dat$type=="EMVar" & rsid_dat$motif=="Alus with GAGGTCA",])/nrow(rsid_dat[rsid_dat$type=="EMVar",])
+prop_GAGGTCA[2]<-nrow(rsid_dat[rsid_dat$type=="enhancer" & rsid_dat$motif=="Alus with GAGGTCA",])/nrow(rsid_dat[rsid_dat$type=="enhancer",])
+prop_GAGGTCA[3]<-nrow(rsid_dat[rsid_dat$type=="nonsig" & rsid_dat$motif=="Alus with GAGGTCA",])/nrow(rsid_dat[rsid_dat$type=="nonsig",])
+names(prop_GAGGTCA)<-c("EMVar","Enhancer","Nonsignificant")
+G<-ggplot()+
+  geom_col(aes(x=prop_GAGGTCA,y=names(prop_GAGGTCA),fill=names(prop_GAGGTCA)))+
+  theme_minimal()+
+  scale_x_continuous(name="Proportion of variants \noverlapping a GAGGTCA Alu element")+
+  scale_y_discrete(name='')+
+  annotate("text",x=0.45,y=2.5,label=paste("p=",formatC(GAGprop_test$p.value,digits = 3),sep=''),cex=6)+
+  scale_fill_manual(values=c(darken(rgb(pony_colors[3,1:3])),darken(rgb(pony_colors[5,1:3])),darken(rgb(pony_colors[9,1:3]))))+
+  theme(axis.text.x=element_text(angle=-45),
+        axis.text=element_text(size=18),
+        axis.title=element_text(size=18),
+        legend.position = "none")+
+  coord_flip()
+G
+
+pdf("~/midway/MPRA_repeats/GAGGTCA_proportions.pdf",width=3,height=5)
+G
+dev.off()
+
+#Plot the interaction of GAGGTCA and strand on expression
+rsid_dat<-merge(rsid_dat,Alus[,c('rsid','rep_strand')],by="rsid")
+rsid_dat<-unique(rsid_dat)
+rsid_dat$motif<-paste(rsid_dat$motif,rsid_dat$rep_strand,sep=", ")
+rsid_dat$motif[grepl("Alus without GAGGTCA",rsid_dat$motif)]<-"Alus without GAGGTCA"
+
+p_motif<-t.test(rsid_dat$qnorm_avg[rsid_dat$motif=="Alus with GAGGTCA, +"],rsid_dat$qnorm_avg[rsid_dat$motif=="Alus without GAGGTCA"])$p.value
+p_strand<-t.test(rsid_dat$qnorm_avg[rsid_dat$motif=="Alus with GAGGTCA, +"],rsid_dat$qnorm_avg[rsid_dat$motif=="Alus with GAGGTCA, -"])$p.value
+
+print(paste("Alus with GAGGTCA plus vs. minus strand: p=",p_strand))
+print(paste("Alus with GAGGTCA vs. Alus without GAGGTCA: p=",p_motif))
+
+S<-ggplot(rsid_dat)+
+  geom_violin(aes(x=motif,y=qnorm_avg,fill=motif),draw_quantiles=c(0.5))+
+  scale_x_discrete(name='')+
+  scale_y_continuous(name="Average normalized activity per variant")+
+  #annotate("text",x=1.8,y=8.6,label=paste("p=",formatC(all_ttest$p.value,digits = 3),sep=''),cex=6)+
+  scale_fill_manual(values=c(darken(rgb(pony_colors[10,1:3])),lighten(rgb(pony_colors[10,1:3])),"gray90"))+
+  theme_minimal()+
+  theme(axis.text.x=element_text(angle=-45),
+        axis.text=element_text(size=16),
+        axis.title=element_text(size=15),
+        legend.position = "none")
+S
+pdf("~/midway/MPRA_repeats/GAGGTCA_expression_strand.pdf",width=4,height=6)
+S
+dev.off()
+
+```
+
+### Motif subtypes by distance
+
+Are the repeat elements that have 'GAGGTCA' 65-80 bp from the start enriched for a certain family?
+
+``` {r motif_subtype_dist,echo=FALSE}
+#Get subtypes for Alus with and without 'GAGGTCA' at bp 65-80
+Alu_subtypes<-merge(rsid_dat,dat,by=c('rsid','type'))
+Alu_subtypes<-Alu_subtypes[grepl("Alu",Alu_subtypes$rep_subtype),]
+Alu_subtypes_GAGGTCA<-Alu_subtypes[Alu_subtypes$motif=="Alus with GAGGTCA",]
+
+#Normalize by proportion of Alu subtypes in genome
+Alu_proportions<-fread("~/midway/MPRA_repeats/SINE_classes_proportions.txt")
+Alu_proportions<-Alu_proportions[grepl("Alu",Alu_proportions$Name),]
+
+Alu_types_all<-as.data.frame(table(Alu_subtypes$rep_subtype),stringsAsFactors = FALSE)
+colnames(Alu_types_all)<-c("Name","Freq")
+Alu_types_all<-merge(Alu_types_all,Alu_proportions,all.y=TRUE)
+Alu_types_all$prop<-Alu_types_all$Freq/sum(Alu_types_all$Freq,na.rm=TRUE)
+Alu_types_all$w_freq<-Alu_types_all$Freq*Alu_types_all$Proportion
+Alu_types_all$type="All Alus in MPRA"
+
+Alu_types_GAGGTCA<-as.data.frame(table(Alu_subtypes_GAGGTCA$rep_subtype),stringsAsFactors = FALSE)
+colnames(Alu_types_GAGGTCA)<-c("Name","Freq")
+Alu_types_GAGGTCA<-merge(Alu_types_GAGGTCA,Alu_proportions,all.y=TRUE)
+Alu_types_GAGGTCA$prop<-Alu_types_GAGGTCA$Freq/sum(Alu_types_GAGGTCA$Freq,na.rm=TRUE)
+Alu_types_GAGGTCA$w_freq<-Alu_types_GAGGTCA$Freq*Alu_types_GAGGTCA$Proportion
+Alu_types_GAGGTCA$type="Alus GAGGTCA between 65-80bp"
+
+Alu_types_all<-Alu_types_all[Alu_types_all$Name %in% Alu_types_GAGGTCA$Name,]
+plot_dat<-rbind(Alu_types_all,Alu_types_GAGGTCA)
+
+S<-ggplot()+
+  geom_col(data=Alu_types_all,aes(x=Name,y=w_freq))+
+  theme_minimal()+
+  scale_y_continuous(name="Frequency weighted by \nAlu prevalence in genome")+
+  scale_x_discrete(name="")+
+  theme(axis.text.x=element_text(angle=-45))+
+  ggtitle("Alus in all MPRA sequences")
+
+G<-ggplot()+
+  geom_col(data=Alu_types_GAGGTCA,aes(x=Name,y=w_freq))+
+  theme_minimal()+
+  scale_y_continuous(name="Frequency weighted by \nAlu prevalence in genome")+
+  scale_x_discrete(name="")+
+  theme(axis.text.x=element_text(angle=-45))+
+  ggtitle("Alus with GAGGTCA 65-80bp from start")
+grid.arrange(S,G,nrow=2)
+
+
+#pdf("~/midway/MPRA_repeats/Alu_type_in_sig_region.pdf",width=8,height=6)
+#grid.arrange(S,G,nrow=2)
+#dev.off()
+
+```
+
+No.
