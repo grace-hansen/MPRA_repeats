@@ -1,0 +1,294 @@
+---
+title: "Location of MPRA variants in repeats, Vijay's data"
+author: "Grace Hansen"
+date: "06/29/2019"
+output: pdf_document
+---
+  
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = '~/midway/MPRA_repeats/')
+library(data.table)
+library(tidyverse)
+library(gridExtra)
+pony_colors<-fread("~/medusa/papers/TWAS/pony_palette")
+########## For color manipulation of graph ###############
+darken <- function(color, factor=1.2){
+  col <- col2rgb(color)
+  col <- col/factor
+  col <- rgb(t(col), maxColorValue=255)
+  col
+}
+lighten <- function(color, factor=0.8){
+  col <- col2rgb(color)
+  col <- col/factor
+  for (i in 1:length(col)) { if ( col[i] > 255 ) { col[i] = 255 } }
+  col <- rgb(t(col), maxColorValue=255)
+  col
+}
+#########################################################
+```
+
+
+```{r load_data,echo=FALSE}
+EMVar_repeats=system("bedtools intersect -a rmsk_hg38.bed -b ~/projects/MPRA/vijay/vijay_half_EMVars_hg38.bed -wa -wb",intern=TRUE)
+EMVar_repeats<-data.frame(do.call('rbind',strsplit(as.data.frame(EMVar_repeats,stringsAsFactors=FALSE)$EMVar_repeats,'\t',fixed=TRUE)))
+colnames(EMVar_repeats)<-c('chr','rep_start','rep_stop','rep_type','rep_score','rep_strand','rep_subtype','chr1','pos','pos1')
+EMVar_repeats=EMVar_repeats[,c('rep_start','rep_stop','rep_type','rep_score','rep_strand','rep_subtype','chr','pos')]
+EMVar_repeats$pos<-as.numeric(as.character(EMVar_repeats$pos))
+EMVar_rsids<-fread("~/projects/MPRA/vijay/vijay_half_EMVars_hg38.bed",header=FALSE)
+colnames(EMVar_rsids)<-c('chr','pos','pos1')
+EMVar_repeats=merge(EMVar_rsids[,c('chr','pos')],EMVar_repeats,by=c("chr","pos"),all.x=TRUE)
+EMVar_repeats$type="EMVar"
+
+enhancer_repeats=system("bedtools intersect -a rmsk_hg38.bed -b ~/projects/MPRA/vijay/vijay_half_enhancers_hg38.bed -wa -wb",intern=TRUE)
+enhancer_repeats<-data.frame(do.call('rbind',strsplit(as.data.frame(enhancer_repeats,stringsAsFactors=FALSE)$enhancer_repeats,'\t',fixed=TRUE)))
+colnames(enhancer_repeats)<-c('chr','rep_start','rep_stop','rep_type','rep_score','rep_strand','rep_subtype','chr1','pos')
+enhancer_repeats=enhancer_repeats[,c('rep_start','rep_stop','rep_type','rep_score','rep_strand','rep_subtype','chr','pos')]
+enhancer_repeats$pos<-as.numeric(as.character(enhancer_repeats$pos))
+enhancer_rsids<-fread("~/projects/MPRA/vijay/vijay_half_enhancers_hg38.bed",header=FALSE)
+colnames(enhancer_rsids)<-c('chr','pos','pos1')
+enhancer_repeats=merge(enhancer_rsids[,c('chr','pos')],enhancer_repeats,by=c("chr","pos"),all.x=TRUE)
+enhancer_repeats$type="enhancer"
+
+nonsig_repeats=system("bedtools intersect -a rmsk_hg38.bed -b ~/projects/MPRA/vijay/vijay_half_nonsig_hg38.bed -wa -wb",intern=TRUE)
+nonsig_repeats<-data.frame(do.call('rbind',strsplit(as.data.frame(nonsig_repeats,stringsAsFactors=FALSE)$nonsig_repeats,'\t',fixed=TRUE)))
+colnames(nonsig_repeats)<-c('chr','rep_start','rep_stop','rep_type','rep_score','rep_strand','rep_subtype','chr1','pos','pos1')
+nonsig_repeats=nonsig_repeats[,c('rep_start','rep_stop','rep_type','rep_score','rep_strand','rep_subtype','chr','pos')]
+nonsig_repeats$pos<-as.numeric(as.character(nonsig_repeats$pos))
+nonsig_rsids<-fread("~/projects/MPRA/vijay/vijay_half_nonsig_hg38.bed",header=FALSE)
+colnames(nonsig_rsids)<-c('chr','pos','pos1')
+nonsig_repeats=merge(nonsig_rsids[,c('chr','pos')],nonsig_repeats,by=c("chr","pos"),all.x=TRUE)
+nonsig_repeats$type="nonsig"
+
+dat=rbind(EMVar_repeats,enhancer_repeats,nonsig_repeats)
+EMVar_pos<-dat$pos[dat$type=="EMVar"]
+dat<-dat[!(dat$type=="enhancer" & dat$pos %in% EMVar_pos),]
+dat<-dat %>% distinct(chr,pos,.keep_all=TRUE) #Picking only unique matches (throws out a few entries where there are multiple repeat subtypes)
+write.table(dat,"~/midway/MPRA_repeats/MPRA_variants_repeats_vijay.txt",row.names=FALSE,sep='\t',quote=FALSE)
+
+```
+
+### Location of MPRA variants in repeats
+```{r fraction_repeats,echo=FALSE}
+summary=matrix(nrow=3,ncol=4)
+j=1
+for (i in c("EMVar","enhancer","nonsig")) {
+  n_vars=length(dat$rep_type[dat$type==i])
+  prop_rep=round(sum(!(is.na(dat$rep_type[dat$type==i])))/length(dat$rep_type[dat$type==i]),digits=4)
+  prop_alu=round(nrow(dat[dat$type==i & grepl("Alu",dat$rep_subtype),])/length(dat$rep_type[dat$type==i]),digits=4)
+  summary[j,]<-c(i,n_vars,prop_rep,prop_alu)
+  j=j+1
+}
+summary=as.data.frame(summary)
+colnames(summary)<-c("Variant type","Number of variants","Proportion in repeats","Proportion in Alus")
+summary$`Proportion in repeats`<-as.numeric(as.character(summary$`Proportion in repeats`))
+summary$`Proportion in Alus`<-as.numeric(as.character(summary$`Proportion in Alus`))
+summary$`Variant type`<-as.character(summary$`Variant type`)
+summary$`Variant type`[summary$`Variant type`=="enhancer"]<-"Enhancer"
+summary$`Variant type`[summary$`Variant type`=="nonsig"]<-"Nonsignificant"
+knitr::kable(summary)
+```
+
+### Retrovirus types in MPRA
+Types of repeats in EMVars:
+```{r repeat_types,echo=FALSE}
+knitr::kable(sort(table(dat$rep_type[dat$type=="EMVar"]),decreasing=TRUE),col.names=c('RV','count'))
+```
+
+Sub-types of repeats in EMVars:
+```{r repeat_subtypes,echo=FALSE}
+knitr::kable(head(sort(table(dat$rep_subtype[dat$type=="EMVar" & grepl("Alu",dat$rep_subtype)]),decreasing=TRUE),27),col.names=c('RV subtype','count'))
+```
+
+### Plot results with chi-square p values
+Are there more repeats and Alus in repeats than expected by chance?
+
+```{r plot_results,echo=FALSE}
+Alu_prop<-nrow(dat[grepl("Alu",dat$rep_subtype),])/nrow(dat)
+repeat_prop<-nrow(dat[dat$rep_type!=0,])/nrow(dat)
+dat <- data.frame(lapply(dat, as.character), stringsAsFactors=FALSE)
+dat[is.na(dat)]<-0
+
+# Repeats
+expected<-matrix(nrow=3,ncol=2)
+colnames(expected)<-c("repeats","no repeats")
+rownames(expected)<-c("EMVars","enhancers","nonsig")
+observed<-expected
+expected[1,1]<-nrow(dat[dat$type=="EMVar",])*repeat_prop
+expected[1,2]<-nrow(dat[dat$type=="EMVar",])*(1-repeat_prop)
+expected[2,1]<-nrow(dat[dat$type=="enhancer",])*repeat_prop
+expected[2,2]<-nrow(dat[dat$type=="enhancer",])*(1-repeat_prop)
+expected[3,1]<-nrow(dat[dat$type=="nonsig",])*repeat_prop
+expected[3,2]<-nrow(dat[dat$type=="nonsig",])*(1-repeat_prop)
+
+observed[1,1]<-nrow(dat[dat$type=="EMVar" & dat$rep_type!=0,])
+observed[1,2]<-nrow(dat[dat$type=="EMVar" & dat$rep_type==0,])
+observed[2,1]<-nrow(dat[dat$type=="enhancer" & dat$rep_type!=0,])
+observed[2,2]<-nrow(dat[dat$type=="enhancer" & dat$rep_type==0,])
+observed[3,1]<-nrow(dat[dat$type=="nonsig" & dat$rep_type!=0,])
+observed[3,2]<-nrow(dat[dat$type=="nonsig" & dat$rep_type==0,])
+
+print("Repeat Chi square observed vs expected tables:")
+observed
+expected
+
+repeat_p<-chisq.test(observed,expected)$p.value
+
+#Alus
+expected<-matrix(nrow=3,ncol=2)
+colnames(expected)<-c("repeats","no repeats")
+rownames(expected)<-c("EMVars","enhancers","nonsig")
+observed<-expected
+expected[1,1]<-nrow(dat[dat$type=="EMVar",])*Alu_prop
+expected[1,2]<-nrow(dat[dat$type=="EMVar",])*(1-Alu_prop)
+expected[2,1]<-nrow(dat[dat$type=="enhancer",])*Alu_prop
+expected[2,2]<-nrow(dat[dat$type=="enhancer",])*(1-Alu_prop)
+expected[3,1]<-nrow(dat[dat$type=="nonsig",])*Alu_prop
+expected[3,2]<-nrow(dat[dat$type=="nonsig",])*(1-Alu_prop)
+
+observed[1,1]<-nrow(dat[dat$type=="EMVar" & grepl("Alu",dat$rep_subtype),])
+observed[1,2]<-nrow(dat[dat$type=="EMVar" & !(grepl("Alu",dat$rep_subtype)),])
+observed[2,1]<-nrow(dat[dat$type=="enhancer" & grepl("Alu",dat$rep_subtype),])
+observed[2,2]<-nrow(dat[dat$type=="enhancer" & !(grepl("Alu",dat$rep_subtype)),])
+observed[3,1]<-nrow(dat[dat$type=="nonsig" & grepl("Alu",dat$rep_subtype),])
+observed[3,2]<-nrow(dat[dat$type=="nonsig" & !(grepl("Alu",dat$rep_subtype)),])
+
+print("Alu Chi square observed vs expected tables:")
+observed
+expected
+
+Alu_p<-chisq.test(observed,expected)$p.value
+
+## Get genome proportions
+repeat_genome_prop<-scan("~/midway/MPRA_repeats/repeat_prop")
+Alu_genome_prop<-scan("~/midway/MPRA_repeats/Alu_prop")
+summary<-as.data.frame(rbind(summary,c("Genome proportion",NA,repeat_genome_prop,Alu_genome_prop)),stringsAsFactors=FALSE)
+summary$`Proportion in repeats`<-as.numeric(summary$`Proportion in repeats`)
+summary$`Proportion in Alus`<-as.numeric(summary$`Proportion in Alus`)
+summary$`Variant type`<-factor(summary$`Variant type`,levels=c("EMVar","Enhancer","Nonsignificant","Genome proportion"))
+
+## Plot results
+pdf("MPRA_vars_in_repeats_vijay.pdf",width=7,height=3)
+ggplot(summary)+
+  geom_col(aes(x=`Variant type`,y=`Proportion in repeats`,fill=`Variant type`))+
+  annotate("text",x=2.65,y=0.85,label=paste("Chisq p= \n",formatC(repeat_p,digits=4),sep=''),cex=6)+
+  theme_minimal()+
+  scale_y_continuous(limits=c(0,1))+
+  scale_x_discrete(name='')+
+  scale_fill_manual(values=c(darken(rgb(pony_colors[3,1:3])),darken(rgb(pony_colors[5,1:3])),darken(rgb(pony_colors[9,1:3])),"gray80"))+
+  theme(axis.text.x=element_text(size=20,angle=-45),
+        axis.text.y=element_text(size=20),
+        axis.title=element_text(size=20),
+        legend.position="none")+
+  coord_flip()
+dev.off()
+
+pdf("MPRA_vars_in_Alus_vijay.pdf",width=7,height=3)
+ggplot(summary)+
+  geom_col(aes(x=`Variant type`,y=`Proportion in Alus`,fill=`Variant type`))+
+  annotate("text",x=2.65,y=0.8,label=paste("Chisq p= \n",formatC(Alu_p,digits=4),sep=''),cex=6)+
+  theme_minimal()+
+  scale_y_continuous(limits=c(0,1))+
+  scale_x_discrete(name='')+
+  scale_fill_manual(values=c(darken(rgb(pony_colors[3,1:3])),darken(rgb(pony_colors[5,1:3])),darken(rgb(pony_colors[9,1:3])),"gray80"))+
+  theme(axis.text.x=element_text(size=20,angle=-45),
+        axis.text.y=element_text(size=20),
+        axis.title=element_text(size=20),
+        legend.position="none")+
+  coord_flip()
+dev.off()
+
+```
+
+## Expression of Alu elements
+
+Are sequences containing Alu elements more highly expressed than sequences not containing Alu elements?
+
+```{r summary_of_distribution,echo=FALSE}
+dat$type[dat$type=="nonsig" & !(grepl("Alu",dat$rep_subtype))]<-"Nonsig, no Alus"
+dat$type[dat$type=="nonsig" & grepl("Alu",dat$rep_subtype)]<-"Nonsig, Alus" #SINE has to be second: some EMVars are in two elements if I use -F 0.25
+dat$type[dat$type=="enhancer" & !(grepl("Alu",dat$rep_subtype))]<-"Enhancer, no Alus"
+dat$type[dat$type=="enhancer" & grepl("Alu",dat$rep_subtype)]<-"Enhancer, Alus"
+dat$type[dat$type=="EMVar" & !(grepl("Alu",dat$rep_subtype))]<-"EMVar, no Alus"
+dat$type[dat$type=="EMVar" & grepl("Alu",dat$rep_subtype)]<-"EMVar, Alus"
+
+qnorm<-as.data.frame(fread("~/projects/MPRA/vijay/MPRA_qnorm.txt"),stringsAsFactors=FALSE)
+qnorm<-qnorm[qnorm$bot=="1/2",]
+qnorm$qnorm_avg<-rowMeans(qnorm[,grepl("RATIO",colnames(qnorm))])
+qnorm<-qnorm %>% group_by(chr,pos,ref,alt,oligo,construct) %>% summarize(qnorm_avg=mean(qnorm_avg))
+qnorm$chr=paste("chr",qnorm$chr,sep='')
+qnorm$pos1=qnorm$pos+1
+write.table(qnorm[,c("chr","pos","pos1","qnorm_avg")],"~/projects/MPRA/vijay/MPRA_qnorm_avg_hg19.bed",quote=FALSE,sep='\t',row.names=FALSE,col.names=FALSE)
+system("liftOver ~/projects/MPRA/vijay/MPRA_qnorm_avg_hg19.bed ~/medusa/reference/hg19ToHg38.over.chain.gz ~/projects/MPRA/vijay/MPRA_qnorm_avg_hg38.bed unMapped")
+qnorm<-as.data.frame(fread("~/projects/MPRA/vijay/MPRA_qnorm_avg_hg38.bed"),stringsAsFactors=FALSE)
+colnames(qnorm)<-c("chr","pos","pos1","qnorm_avg")
+dat<-merge(dat,qnorm[,c("chr","pos","qnorm_avg")],by=c("chr","pos"))
+
+print("qnorm from nonsignificant sequences without Alu elements")
+summary(dat$qnorm_avg[dat$type=="Nonsig, no Alus"])
+print("qnorm from nonsignificant sequences with Alu elements")
+summary(dat$qnorm_avg[dat$type=="Nonsig, Alus"])
+print("qnorm from enhancer sequences without Alu elements")
+summary(dat$qnorm_avg[dat$type=="Enhancer, no Alus"])
+print("qnorm from enhancer sequences with Alu elements")
+summary(dat$qnorm_avg[dat$type=="Enhancer, Alus"])
+print("qnorm from EMVar sequences without Alu elements")
+summary(dat$qnorm_avg[dat$type=="EMVar, no Alus"])
+print("qnorm from EMVar sequences with Alu elements")
+summary(dat$qnorm_avg[dat$type=="EMVar, Alus"])
+```
+
+### Significance and visualization
+
+In the plots below, you can see that the Alu-containing sequences have higher expression in enhancers and EMVars, but this isn't true for nonsignificant sequences.
+
+
+```{r plot_alus,echo=FALSE}
+
+nonsig_ttest<-t.test(dat$qnorm_avg[dat$type=="Nonsig, Alus"],dat$qnorm_avg[dat$type=="Nonsig, no Alus"])
+enhancer_ttest<-t.test(dat$qnorm_avg[dat$type=="Enhancer, Alus"],dat$qnorm_avg[dat$type=="Enhancer, no Alus"])
+EMVar_ttest<-t.test(dat$qnorm_avg[dat$type=="EMVar, Alus"],dat$qnorm_avg[dat$type=="EMVar, no Alus"])
+
+M<-ggplot(dat[grepl("EMVar",dat$type),])+
+  geom_violin(aes(x=type,y=qnorm_avg,fill=type),draw_quantiles=c(0.5))+
+  scale_x_discrete(name='')+
+  scale_y_continuous(name="Average activity per variant")+
+  annotate("text",x=1.18,y=8.75,label=paste("p=",formatC(EMVar_ttest$p.value, format = "e", digits = 3),sep=''),cex=6)+
+  scale_fill_manual(values=c(darken(rgb(pony_colors[3,1:3])),lighten(rgb(pony_colors[3,1:3]))))+
+  theme_minimal()+
+  theme(axis.text.x=element_text(angle=-45),
+        axis.text=element_text(size=16),
+        axis.title=element_text(size=15),
+        legend.position = "none")
+E<-ggplot(dat[grepl("Enhancer",dat$type),])+
+  geom_violin(aes(x=type,y=qnorm_avg,fill=type),draw_quantiles=c(0.5))+
+  scale_x_discrete(name='')+
+  scale_y_continuous(name="Average activity per variant")+
+  annotate("text",x=1.18,y=9.25,label=paste("p=",formatC(enhancer_ttest$p.value, format = "e", digits = 3),sep=''),cex=6)+
+  scale_fill_manual(values=c(darken(rgb(pony_colors[5,1:3])),lighten(rgb(pony_colors[5,1:3]))))+
+  theme_minimal()+
+  theme(axis.text.x=element_text(angle=-45),
+        axis.text=element_text(size=16),
+        axis.title=element_text(size=15),
+        legend.position = "none")
+N<-ggplot(dat[grepl("Nonsig",dat$type),])+
+  geom_violin(aes(x=type,y=qnorm_avg,fill=type),draw_quantiles=c(0.5))+
+  scale_x_discrete(name='')+
+  scale_y_continuous(name="Average activity per variant")+
+  annotate("text",x=1.18,y=3.5,label=paste("p=",formatC(nonsig_ttest$p.value, format="e",digits = 3),sep=''),cex=6)+
+  scale_fill_manual(values=c(darken(rgb(pony_colors[9,1:3])),lighten(rgb(pony_colors[9,1:3]))))+
+  theme_minimal()+
+  theme(axis.text.x=element_text(angle=-45),
+        axis.text=element_text(size=16),
+        axis.title=element_text(size=15),
+        legend.position = "none")
+
+grid.arrange(M,E,N,nrow=1)
+
+pdf("Alus_vs_noAlus_vijay.pdf",width=8,height=5)
+grid.arrange(M,E,N,nrow=1)
+dev.off()
+
+
+```
