@@ -95,7 +95,9 @@ observed[2,2]<-dat_nomotif_noAlu
 knitr::kable(observed,caption="Observed prevalence of motifs and Alus in dat")
 knitr::kable(expected,caption="Expected prevalence of motifs and Alus in dat")
 
-print(paste("Chi-square P for overrepresentation of motifs in Alus:",chisq.test(observed,expected)$p.value,sep=''))
+print(paste("Chi-square P for overrepresentation of motifs in Alus:",sep=''))
+chisq.test(observed,expected)
+chisq.test(observed,expected)$p.value
 #pdf("~/midway/MPRA_repeats/EMVar_Alus_in_motifs.pdf",width=2.75,height=6)
 #M
 #dev.off()

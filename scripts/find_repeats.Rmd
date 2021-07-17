@@ -32,29 +32,29 @@ lighten <- function(color, factor=0.8){
 
 
 ```{r load_data,echo=FALSE}
-EMVar_repeats=system("bedtools intersect -a rmsk_hg38.bed -b ~/projects/MPRA/WHR/results/sig_EMVars.bed -wa -wb",intern=TRUE)
+EMVar_repeats=system("bedtools intersect -a rmsk_hg38.bed -b ~/medusa/projects/MPRA/WHR/results/sig_EMVars.bed -wa -wb",intern=TRUE)
 EMVar_repeats<-data.frame(do.call('rbind',strsplit(as.data.frame(EMVar_repeats,stringsAsFactors=FALSE)$EMVar_repeats,'\t',fixed=TRUE)))
 colnames(EMVar_repeats)<-c('chr','rep_start','rep_stop','rep_type','rep_score','rep_strand','rep_subtype','chr1','pos','pos1','rsid','dot','dot1','source')
 EMVar_repeats=EMVar_repeats[,c('rep_start','rep_stop','rep_type','rep_score','rep_strand','rep_subtype','rsid')]
-EMVar_rsids<-fread("~/projects/MPRA/WHR/results/sig_EMVars.bed",header=FALSE)
+EMVar_rsids<-fread("~/medusa/projects/MPRA/WHR/results/sig_EMVars.bed",header=FALSE)
 colnames(EMVar_rsids)<-c('chr','pos','pos1','rsid','dot','dot1','source')
 EMVar_repeats=merge(EMVar_rsids[,c('chr','rsid','pos','source')],EMVar_repeats,on='rsid',all.x=TRUE) %>% select(-source,source)
 EMVar_repeats$type="EMVar"
 
-enhancer_repeats=system("bedtools intersect -a rmsk_hg38.bed -b ~/projects/MPRA/WHR/results/sig_enhancers.bed -wa -wb",intern=TRUE)
+enhancer_repeats=system("bedtools intersect -a rmsk_hg38.bed -b ~/medusa/projects/MPRA/WHR/results/sig_enhancers.bed -wa -wb",intern=TRUE)
 enhancer_repeats<-data.frame(do.call('rbind',strsplit(as.data.frame(enhancer_repeats,stringsAsFactors=FALSE)$enhancer_repeats,'\t',fixed=TRUE)))
 colnames(enhancer_repeats)<-c('chr','rep_start','rep_stop','rep_type','rep_score','rep_strand','rep_subtype','chr1','pos','pos1','rsid','dot','dot1','source')
 enhancer_repeats=enhancer_repeats[,c('rep_start','rep_stop','rep_type','rep_score','rep_strand','rep_subtype','rsid')]
-enhancer_rsids<-fread("~/projects/MPRA/WHR/results/sig_enhancers.bed",header=FALSE)
+enhancer_rsids<-fread("~/medusa/projects/MPRA/WHR/results/sig_enhancers.bed",header=FALSE)
 colnames(enhancer_rsids)<-c('chr','pos','pos1','rsid','dot','dot1','source')
 enhancer_repeats=merge(enhancer_rsids[,c('chr','rsid','pos','source')],enhancer_repeats,on='rsid',all.x=TRUE) %>% select(-source,source)
 enhancer_repeats$type="enhancer"
 
-nonsig_repeats=system("bedtools intersect -a rmsk_hg38.bed -b ~/projects/MPRA/WHR/results/nonsig_rsids.bed -wa -wb",intern=TRUE)
+nonsig_repeats=system("bedtools intersect -a rmsk_hg38.bed -b ~/medusa/projects/MPRA/WHR/results/nonsig_rsids.bed -wa -wb",intern=TRUE)
 nonsig_repeats<-data.frame(do.call('rbind',strsplit(as.data.frame(nonsig_repeats,stringsAsFactors=FALSE)$nonsig_repeats,'\t',fixed=TRUE)))
 colnames(nonsig_repeats)<-c('chr','rep_start','rep_stop','rep_type','rep_score','rep_strand','rep_subtype','chr1','pos','pos1','rsid','dot','dot1','source')
 nonsig_repeats=nonsig_repeats[,c('rep_start','rep_stop','rep_type','rep_score','rep_strand','rep_subtype','rsid')]
-nonsig_rsids<-fread("~/projects/MPRA/WHR/results/nonsig_rsids.bed",header=FALSE)
+nonsig_rsids<-fread("~/medusa/projects/MPRA/WHR/results/nonsig_rsids.bed",header=FALSE)
 colnames(nonsig_rsids)<-c('chr','pos','pos1','rsid','dot','dot1','source')
 nonsig_repeats=merge(nonsig_rsids[,c('chr','rsid','pos','source')],nonsig_repeats,on='rsid',all.x=TRUE) %>% select(-source,source)
 nonsig_repeats$type="nonsig"
@@ -106,7 +106,7 @@ knitr::kable(table(dat$type[grepl("Alu",dat$rep_subtype)],dat$rep_strand[grepl("
 
 
 ### Plot results with chi-square p values
-Are there more repeats and Alus in repeats than expected by chance?
+Are there more repeats and Alus than expected by chance?
 
 ```{r plot_results,echo=FALSE}
 Alu_prop<-nrow(dat[grepl("Alu",dat$rep_subtype),])/nrow(dat)
@@ -133,7 +133,7 @@ observed[2,2]<-nrow(dat[dat$type=="enhancer" & dat$rep_type==0,])
 observed[3,1]<-nrow(dat[dat$type=="nonsig" & dat$rep_type!=0,])
 observed[3,2]<-nrow(dat[dat$type=="nonsig" & dat$rep_type==0,])
 
-repeat_p<-chisq.test(observed,expected)$p.value
+repeat_p<-chisq.test(observed,expected)
 
 #Alus
 expected<-matrix(nrow=3,ncol=2)
@@ -154,7 +154,9 @@ observed[2,2]<-nrow(dat[dat$type=="enhancer" & !(grepl("Alu",dat$rep_subtype)),]
 observed[3,1]<-nrow(dat[dat$type=="nonsig" & grepl("Alu",dat$rep_subtype),])
 observed[3,2]<-nrow(dat[dat$type=="nonsig" & !(grepl("Alu",dat$rep_subtype)),])
 
-Alu_p<-chisq.test(observed,expected)$p.value
+chisq.test(observed,expected)
+chisq.test(observed,expected)$p.value
+
 
 ## Get genome proportions
 repeat_genome_prop<-scan("~/midway/MPRA_repeats/repeat_prop")
@@ -180,7 +182,7 @@ ggplot(summary)+
   coord_flip()
 #dev.off()
 
-#pdf("MPRA_vars_in_Alus.pdf",width=7,height=3)
+#pdf("MPRA_vars_in_Alus.pdf",width=5,height=4)
 ggplot(summary)+
   geom_col(aes(x=`Variant type`,y=`Proportion in Alus`,fill=`Variant type`))+
   annotate("text",x=2.65,y=0.8,label=paste("Chisq p= \n",formatC(Alu_p,digits=4),sep=''),cex=6)+
